@@ -4,7 +4,7 @@ import requests
 app = Flask(__name__)
 
 # 🔴 حط التوكن هنا فقط
-PAGE_ACCESS_TOKEN = "PUT_YOUR_PAGE_ACCESS_TOKEN_HERE"
+PAGE_ACCESS_TOKE = "EAAVlUUUccQUBRkRn2ewom7yxhDi3R7u0Pk92QZCTTVZC1CGmwEux9t6SmsPsyrSPgj2aWuY8ZC5OD7ZBxojYDT9I0Gvuv5xyD24YvaUQbzjhA6jtSpgFazR956KdX4gUE6YHqIrA3CjgSHUDdrOxbilRGfUmOugL8d5vsGnz8gKGyrJUibT6XYVV5c9wRkHuYINjuaNKCJBity9QrZBVBws5iFjAG7LHq9K3i59rDt7eoSQAl96TTpz7nJJTHx1gSmrZBdP2ZCisvStkxZADNUD2"
 
 VERIFY_TOKEN = "26042009"
 
@@ -18,7 +18,7 @@ def send_message(user_id, text):
     }
 
     params = {
-        "EAAVlUUUccQUBRkRn2ewom7yxhDi3R7u0Pk92QZCTTVZC1CGmwEux9t6SmsPsyrSPgj2aWuY8ZC5OD7ZBxojYDT9I0Gvuv5xyD24YvaUQbzjhA6jtSpgFazR956KdX4gUE6YHqIrA3CjgSHUDdrOxbilRGfUmOugL8d5vsGnz8gKGyrJUibT6XYVV5c9wRkHuYINjuaNKCJBity9QrZBVBws5iFjAG7LHq9K3i59rDt7eoSQAl96TTpz7nJJTHx1gSmrZBdP2ZCisvStkxZADNUD2": PAGE_ACCESS_TOKEN
+        "access_token": PAGE_ACCESS_TOKEN
     }
 
     requests.post(url, json=payload, params=params)
