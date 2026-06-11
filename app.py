@@ -3,8 +3,10 @@ import requests
 
 app = Flask(__name__)
 
+# 🔴 حط التوكن هنا فقط
+PAGE_ACCESS_TOKEN = "PUT_YOUR_PAGE_ACCESS_TOKEN_HERE"
+
 VERIFY_TOKEN = "26042009"
-PAGE_ACCESS_TOKEN = "YOUR_PAGE_ACCESS_TOKEN"
 
 
 def send_message(user_id, text):
@@ -35,7 +37,6 @@ def verify():
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
         return challenge, 200
-
     return "Forbidden", 403
 
 
