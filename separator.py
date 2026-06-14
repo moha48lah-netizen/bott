@@ -8,7 +8,7 @@ class AudioSeparator:
     async def separate(self, audio_path):
         out_dir = os.path.join(self.temp, f"sep_{os.urandom(4).hex()}")
         os.makedirs(out_dir, exist_ok=True)
-        cmd = ['spleeter','separate','-p','spleeter:2stems','-o',out_dir,audio_path]
+        cmd = ['python','-m','demucs','-o',out_dir,audio_path]
         try:
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             _, stderr = await proc.communicate()
