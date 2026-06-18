@@ -1,16 +1,14 @@
 import os
 import logging
 import asyncio
-import re
 from pathlib import Path
 from urllib.parse import urlparse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
-import requests
 
 # ========================
-# الاعدادات من Railway
+# الاعدادات
 # ========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DOWNLOAD_DIR = Path("/tmp/downloads")
@@ -20,134 +18,80 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ========================
-# دوال التحميل
+# خيارات yt-dlp لكل منصة
 # ========================
-def extract_instagram(url):
-    """تحميل انستغرام"""
-    try:
-        if '/reel/' in url:
-            post_id = url.split('/reel/')[1].split('/')[0].split('?')[0]
-        elif '/p/' in url:
-            post_id = url.split('/p/')[1].split('/')[0].split('?')[0]
-        else:
-            return None
-        
-        # طريقة 1: API مباشر
-        api_url = f"https://www.instagram.com/p/{post_id}/?__a=1&__d=1"
-        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'}
-        
-        response = requests.get(api_url, headers=headers, timeout=15)
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                video_url = data['graphql']['shortcode_media']['video_url']
-                video_response = requests.get(video_url, headers=headers, timeout=30)
-                if video_response.status_code == 200:
-                    filepath = DOWNLOAD_DIR / f"ig_{post_id}.mp4"
-                    with open(filepath, 'wb') as f:
-                        f.write(video_response.content)
-                    return str(filepath)
-            except:
-                pass
-        
-        # طريقة 2: snapinsta
-        snap_url = "https://snapinsta.app/action2.php"
-        data = {'url': url, 'action': 'post'}
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        
-        response = requests.post(snap_url, data=data, headers=headers, timeout=15)
-        if response.status_code == 200:
-            video_match = re.search(r'href="(https://[^"]*\.mp4[^"]*)"', response.text)
-            if video_match:
-                video_url = video_match.group(1).replace('&amp;', '&')
-                video_response = requests.get(video_url, headers=headers, timeout=30)
-                if video_response.status_code == 200:
-                    filepath = DOWNLOAD_DIR / f"ig_{post_id}.mp4"
-                    with open(filepath, 'wb') as f:
-                        f.write(video_response.content)
-                    return str(filepath)
-        return None
-    except Exception as e:
-        logger.error(f"Instagram error: {e}")
-        return None
-
-def extract_tiktok(url):
-    """تحميل تيك توك"""
-    try:
-        api_url = "https://www.tikwm.com/api/"
-        params = {'url': url, 'hd': 1}
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        
-        response = requests.get(api_url, params=params, headers=headers, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('code') == 0:
-                video_url = data['data'].get('hdplay') or data['data'].get('play')
-                if video_url:
-                    video_response = requests.get(video_url, headers=headers, timeout=30)
-                    if video_response.status_code == 200:
-                        video_id = data['data']['id']
-                        filepath = DOWNLOAD_DIR / f"tt_{video_id}.mp4"
-                        with open(filepath, 'wb') as f:
-                            f.write(video_response.content)
-                        return str(filepath)
-        return None
-    except Exception as e:
-        logger.error(f"TikTok error: {e}")
-        return None
-
-def extract_youtube(url, quality='best'):
-    """تحميل يوتيوب"""
-    try:
-        ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': str(DOWNLOAD_DIR / '%(title).50s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
-            'socket_timeout': 30,
-            'retries': 3,
+def get_ydl_opts(url, quality='best'):
+    """إعدادات محسنة حسب المنصة"""
+    
+    domain = urlparse(url).netloc.lower()
+    
+    # إعدادات أساسية
+    opts = {
+        'outtmpl': str(DOWNLOAD_DIR / '%(title).80s.%(ext)s'),
+        'quiet': True,
+        'no_warnings': False,  # خلينا نشوف الأخطاء
+        'socket_timeout': 30,
+        'retries': 5,
+        'fragment_retries': 5,
+        'extract_flat': False,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
-        
-        if quality == 'audio':
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '320'}],
-            })
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if quality == 'audio':
-                filename = str(Path(filename).with_suffix('.mp3'))
-            return filename
-    except Exception as e:
-        logger.error(f"YouTube error: {e}")
-        return None
-
-def extract_other(url):
-    """تحميل المنصات الأخرى"""
-    try:
-        ydl_opts = {
+    }
+    
+    # إعدادات خاصة بانستغرام
+    if 'instagram.com' in domain:
+        opts.update({
             'format': 'best',
-            'outtmpl': str(DOWNLOAD_DIR / '%(title).50s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
-    except Exception as e:
-        logger.error(f"Other error: {e}")
-        return None
+            'extractor_args': {
+                'instagram': {
+                    'no_login': 'true',
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cookie': '',  # فاضي للتحميل العام
+            }
+        })
+    
+    # إعدادات تيك توك
+    elif 'tiktok.com' in domain:
+        opts.update({
+            'format': 'best',
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+            }
+        })
+    
+    # إعدادات يوتيوب وبقية المنصات
+    else:
+        opts.update({
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'merge_output_format': 'mp4',
+        })
+    
+    # للصوتيات
+    if quality == 'audio':
+        opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '320',
+            }],
+        })
+    
+    return opts
 
 # ========================
-# دالة التحميل الذكية
+# دالة التحميل
 # ========================
-async def smart_download(url, quality, update, context):
-    """توجيه التحميل حسب المنصة"""
+async def download_video(url, quality, update, context):
+    """تحميل الفيديو وإرساله"""
     chat_id = update.effective_chat.id
     
     if update.callback_query:
@@ -156,58 +100,123 @@ async def smart_download(url, quality, update, context):
         status_msg = await context.bot.send_message(chat_id, "🔄 جاري التحميل...")
     
     try:
-        domain = urlparse(url).netloc.lower()
-        filepath = None
+        ydl_opts = get_ydl_opts(url, quality)
         
-        if 'instagram.com' in domain:
-            filepath = await asyncio.to_thread(extract_instagram, url)
-        elif 'tiktok.com' in domain:
-            filepath = await asyncio.to_thread(extract_tiktok, url)
-        elif 'youtube.com' in domain or 'youtu.be' in domain:
-            filepath = await asyncio.to_thread(extract_youtube, url, quality)
-        else:
-            filepath = await asyncio.to_thread(extract_other, url)
+        def sync_download():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+                
+                # تصحيح الامتداد للصوت
+                if quality == 'audio':
+                    filename = str(Path(filename).with_suffix('.mp3'))
+                
+                return filename, info
         
-        if filepath and os.path.exists(filepath):
-            file_size = os.path.getsize(filepath)
-            
-            if file_size > 50 * 1024 * 1024:
-                await status_msg.edit_text("⚠️ حجم الملف كبير جداً (>50MB)")
-                os.remove(filepath)
-                return
-            
-            await status_msg.delete()
-            
-            if quality == 'audio':
-                with open(filepath, 'rb') as f:
-                    await context.bot.send_audio(chat_id, f, title=Path(filepath).stem)
+        # تشغيل في thread منفصل
+        filepath, info = await asyncio.to_thread(sync_download)
+        
+        # البحث عن الملف إذا ما لقيناه
+        if not os.path.exists(filepath):
+            # يمكن الملف بامتداد مختلف
+            base = Path(filepath).stem
+            for ext in ['.mp4', '.mkv', '.webm', '.mp3']:
+                alt_path = DOWNLOAD_DIR / f"{base}{ext}"
+                if alt_path.exists():
+                    filepath = str(alt_path)
+                    break
+        
+        if not os.path.exists(filepath):
+            # آخر محاولة - أي ملف جديد في المجلد
+            files = sorted(DOWNLOAD_DIR.glob("*"), key=lambda f: f.stat().st_mtime, reverse=True)
+            if files:
+                filepath = str(files[0])
             else:
-                with open(filepath, 'rb') as f:
-                    await context.bot.send_video(chat_id, f, supports_streaming=True)
-            
+                raise FileNotFoundError("الملف غير موجود")
+        
+        # فحص الحجم
+        file_size = os.path.getsize(filepath)
+        max_size = 50 * 1024 * 1024  # 50MB
+        
+        if file_size > max_size:
+            await status_msg.edit_text(f"⚠️ الملف كبير: {file_size/1024/1024:.1f}MB - الحد 50MB")
             os.remove(filepath)
-            logger.info(f"✅ تم التحميل: {filepath}")
+            return
+        
+        if file_size == 0:
+            await status_msg.edit_text("❌ الملف فارغ")
+            os.remove(filepath)
+            return
+        
+        # حذف رسالة الانتظار
+        await status_msg.delete()
+        
+        # إرسال الملف
+        title = info.get('title', Path(filepath).stem)[:100]
+        
+        if quality == 'audio':
+            with open(filepath, 'rb') as f:
+                await context.bot.send_audio(
+                    chat_id,
+                    f,
+                    title=title,
+                    performer=info.get('uploader', 'Unknown')
+                )
         else:
-            await status_msg.edit_text("❌ فشل التحميل\nجرب فيديو آخر")
+            with open(filepath, 'rb') as f:
+                await context.bot.send_video(
+                    chat_id,
+                    f,
+                    supports_streaming=True,
+                    caption=f"🎬 {title}" if len(title) < 100 else None
+                )
+        
+        # حذف الملف
+        os.remove(filepath)
+        logger.info(f"✅ تم بنجاح: {title}")
+        
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await status_msg.edit_text(f"❌ خطأ: {str(e)[:200]}")
+        # طباعة الخطأ كامل في السجلات
+        logger.exception("خطأ في التحميل:")
+        error_str = str(e)
+        
+        # رسائل مخصصة حسب الخطأ
+        if "login" in error_str.lower() or "401" in error_str or "403" in error_str:
+            await status_msg.edit_text(
+                "🔒 إنستغرام يطلب تسجيل دخول لهذا الفيديو\n\n"
+                "📌 الحلول:\n"
+                "1️⃣ جرب فيديو من حساب عام مفتوح\n"
+                "2️⃣ أضف حساب إنستغرام في إعدادات البوت\n\n"
+                f"❌ الخطأ: {error_str[:150]}"
+            )
+        elif "rate limit" in error_str.lower() or "429" in error_str:
+            await status_msg.edit_text("⏳ تم حظر مؤقت من إنستغرام. انتظر 5 دقائق وحاول مجدداً.")
+        elif "not available" in error_str.lower():
+            await status_msg.edit_text("❌ الفيديو غير متاح (خاص أو محذوف)")
+        else:
+            await status_msg.edit_text(f"❌ خطأ:\n{error_str[:200]}")
 
 # ========================
 # أوامر البوت
 # ========================
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎬 بوت تحميل الفيديوهات\n\n"
-        "📥 أرسل رابط الفيديو للتحميل\n"
-        "📺 يوتيوب | 📸 انستغرام | 🎵 تيك توك | 🐦 تويتر | 👤 فيسبوك"
+        "🎬 *بوت تحميل الفيديوهات*\n\n"
+        "📥 المنصات المدعومة:\n"
+        "• 📸 انستغرام\n"
+        "• 🎵 تيك توك\n"
+        "• 📺 يوتيوب\n"
+        "• 🐦 تويتر/X\n"
+        "• 👤 فيسبوك\n\n"
+        "📤 فقط أرسل الرابط واختر الجودة!",
+        parse_mode='Markdown'
     )
 
 async def url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     
     if not url.startswith(('http://', 'https://')):
-        await update.message.reply_text("❌ أرسل رابط صحيح")
+        await update.message.reply_text("❌ أرسل رابط صحيح يبدأ بـ http:// أو https://")
         return
     
     context.user_data['url'] = url
@@ -232,18 +241,25 @@ async def quality_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = context.user_data.get('url')
     
     if not url:
-        await query.edit_message_text("❌ انتهت الجلسة")
+        await query.edit_message_text("❌ انتهت الجلسة، أرسل الرابط مجدداً")
         return
     
-    await query.edit_message_text(f"⏳ جاري التحميل...")
-    await smart_download(url, quality, update, context)
+    quality_names = {
+        '720p': '🎥 720p',
+        '1080p': '🎥 1080p',
+        'best': '🔥 أفضل جودة',
+        'audio': '🎵 MP3'
+    }
+    
+    await query.edit_message_text(f"⏳ جاري تحميل {quality_names.get(quality, quality)}...")
+    await download_video(url, quality, update, context)
 
 # ========================
 # تشغيل البوت
 # ========================
 def main():
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN غير موجود في المتغيرات البيئية")
+        logger.error("❌ أضف BOT_TOKEN في Railway Variables")
         return
     
     app = Application.builder().token(BOT_TOKEN).build()
@@ -252,7 +268,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, url_handler))
     app.add_handler(CallbackQueryHandler(quality_handler))
     
-    logger.info("🚀 البوت يعمل...")
+    logger.info("🚀 البوت يعمل على Railway...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
