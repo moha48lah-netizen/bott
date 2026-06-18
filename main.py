@@ -9,7 +9,7 @@ import yt_dlp
 # ========================
 # 1. الاعدادات
 # ========================
-BOT_TOKEN = "TOKEN_HERE"  # ضع التوكن هنا
+BOT_TOKEN = "8940243101:AAGk3kzx9hDpp3CFV2owD2UT52XfaRTEMI0"  # ضع التوكن هنا
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
