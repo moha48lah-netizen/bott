@@ -136,10 +136,10 @@ async def download_video(url, quality, update, context):
         
         # فحص الحجم
         file_size = os.path.getsize(filepath)
-        max_size = 50 * 1024 * 1024  # 50MB
+        max_size = 5000 * 1024 * 1024  # 50MB
         
         if file_size > max_size:
-            await status_msg.edit_text(f"⚠️ الملف كبير: {file_size/1024/1024:.1f}MB - الحد 50MB")
+            await status_msg.edit_text(f"⚠️ الملف كبير: {file_size/1024/1024:.1f}MB - الحد 5000MB")
             os.remove(filepath)
             return
         
